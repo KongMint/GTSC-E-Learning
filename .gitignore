@@ -1,0 +1,17 @@
+# Node
+node_modules/
+
+# build
+frontend/build/
+backend/dist/
+
+# env
+*.env
+
+# logs
+logs
+*.log
+npm-debug.log*
+
+# vscode
+.vscode/
