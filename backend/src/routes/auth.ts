@@ -5,27 +5,38 @@ import jwt from 'jsonwebtoken';
 interface User {
   username: string;
   passwordHash: string;
+  role: 'member' | 'admin';
+  status: 'active' | 'disabled';
+  joinedAt: string;
 }
 
 // simple in-memory user store; replace with a real DB for production
-const users: Map<string, User> = new Map();
+export const users: Map<string, User> = new Map();
 
 const router = Router();
 
 // register endpoint
 router.post('/register', async (req, res) => {
-  const { username, password } = req.body as { username: string; password: string };
-  if (!username || !password) {
+  const { username, email, password } = req.body as { username?: string; email?: string; password: string };
+  const accountName = username || email;
+
+  if (!accountName || !password) {
     return res.status(400).json({ message: 'Username and password are required' });
   }
 
-  if (users.has(username)) {
+  if (users.has(accountName)) {
     return res.status(400).json({ message: 'User already exists' });
   }
 
   try {
     const hash = await bcrypt.hash(password, 10);
-    users.set(username, { username, passwordHash: hash });
+    users.set(accountName, {
+      username: accountName,
+      passwordHash: hash,
+      role: 'member',
+      status: 'active',
+      joinedAt: new Date().toISOString(),
+    });
     return res.json({ message: 'User registered successfully' });
   } catch (err) {
     console.error(err);
@@ -35,14 +46,32 @@ router.post('/register', async (req, res) => {
 
 // login endpoint
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body as { username: string; password: string };
-  if (!username || !password) {
+  const { username, email, password } = req.body as { username?: string; email?: string; password: string };
+  const accountName = username || email;
+  const normalizedAccount = (accountName || '').trim().toLowerCase();
+  const normalizedPassword = (password || '').trim();
+
+  if (!accountName || !password) {
     return res.status(400).json({ message: 'Username and password are required' });
   }
 
-  const user = users.get(username);
+  const adminUsername = (process.env.ADMIN_USERNAME || 'admin@gtsc.local').trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const acceptedAdminUsernames = new Set([adminUsername, 'admin@gtsc.local', 'admin@gts.local']);
+
+  if (acceptedAdminUsernames.has(normalizedAccount) && normalizedPassword === adminPassword) {
+    const secret = process.env.JWT_SECRET || 'change_me';
+    const token = jwt.sign({ username: adminUsername, role: 'admin' }, secret, { expiresIn: '1h' });
+    return res.json({ token });
+  }
+
+  const user = users.get(accountName);
   if (!user) {
     return res.status(400).json({ message: 'Invalid credentials' });
+  }
+
+  if (user.status === 'disabled') {
+    return res.status(403).json({ message: 'Account is disabled' });
   }
 
   try {
@@ -52,7 +81,7 @@ router.post('/login', async (req, res) => {
     }
 
     const secret = process.env.JWT_SECRET || 'change_me';
-    const token = jwt.sign({ username: user.username }, secret, { expiresIn: '1h' });
+    const token = jwt.sign({ username: user.username, role: user.role }, secret, { expiresIn: '1h' });
 
     return res.json({ token });
   } catch (err) {
