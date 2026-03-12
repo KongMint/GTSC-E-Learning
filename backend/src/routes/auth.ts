@@ -37,7 +37,14 @@ router.post('/register', async (req, res) => {
       status: 'active',
       joinedAt: new Date().toISOString(),
     });
-    return res.json({ message: 'User registered successfully' });
+
+    const secret = process.env.JWT_SECRET || 'change_me';
+    const token = jwt.sign({ username: accountName, role: 'member' }, secret, { expiresIn: '1h' });
+
+    return res.json({
+      message: 'User registered successfully',
+      token,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Internal server error' });

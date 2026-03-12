@@ -13,16 +13,21 @@ interface AdminTokenPayload {
 
 interface Lesson {
   id: string;
+  courseTitle: string;
+  moduleTitle: string;
+  orderInModule: number;
   title: string;
   description: string;
   contentType: 'link' | 'pdf';
   contentUrl: string;
+  status: 'draft' | 'published';
   createdBy: string;
+  updatedAt: string;
   publishedAt: string;
 }
 
 const router = Router();
-const lessons: Lesson[] = [];
+export const lessons: Lesson[] = [];
 const uploadsDir = path.join(process.cwd(), 'uploads');
 
 if (!fs.existsSync(uploadsDir)) {
@@ -177,19 +182,29 @@ router.post('/lessons', uploadPdf.single('pdfFile'), (req, res) => {
     return;
   }
 
-  const { title, description, contentType, contentUrl } = req.body as {
+  const { courseTitle, moduleTitle, orderInModule, title, description, contentType, contentUrl, status } = req.body as {
+    courseTitle?: string;
+    moduleTitle?: string;
+    orderInModule?: string | number;
     title?: string;
     description?: string;
     contentType?: 'link' | 'pdf';
     contentUrl?: string;
+    status?: 'draft' | 'published';
   };
 
-  if (!title || !description || !contentType) {
-    return res.status(400).json({ message: 'Title, description and contentType are required' });
+  if (!courseTitle || !moduleTitle || !title || !description || !contentType) {
+    return res.status(400).json({ message: 'courseTitle, moduleTitle, title, description and contentType are required' });
   }
 
   if (contentType !== 'link' && contentType !== 'pdf') {
     return res.status(400).json({ message: 'contentType must be link or pdf' });
+  }
+
+  const normalizedStatus = status === 'draft' ? 'draft' : 'published';
+  const normalizedOrder = Number(orderInModule);
+  if (!Number.isFinite(normalizedOrder) || normalizedOrder < 1) {
+    return res.status(400).json({ message: 'orderInModule must be a number greater than 0' });
   }
 
   let finalContentUrl = contentUrl;
@@ -211,11 +226,16 @@ router.post('/lessons', uploadPdf.single('pdfFile'), (req, res) => {
 
   const newLesson: Lesson = {
     id: `lesson-${Date.now()}`,
+    courseTitle,
+    moduleTitle,
+    orderInModule: Math.floor(normalizedOrder),
     title,
     description,
     contentType,
     contentUrl: finalContentUrl as string,
+    status: normalizedStatus,
     createdBy: admin.username,
+    updatedAt: new Date().toISOString(),
     publishedAt: new Date().toISOString(),
   };
 
@@ -223,8 +243,36 @@ router.post('/lessons', uploadPdf.single('pdfFile'), (req, res) => {
   return res.status(201).json({ lesson: newLesson });
 });
 
+router.patch('/lessons/:lessonId/status', (req, res) => {
+  const admin = verifyAdmin(req, res);
+  if (!admin) {
+    return;
+  }
+
+  const { lessonId } = req.params;
+  const { status } = req.body as { status?: 'draft' | 'published' };
+
+  if (status !== 'draft' && status !== 'published') {
+    return res.status(400).json({ message: 'status must be draft or published' });
+  }
+
+  const lesson = lessons.find((item) => item.id === lessonId);
+  if (!lesson) {
+    return res.status(404).json({ message: 'Lesson not found' });
+  }
+
+  lesson.status = status;
+  lesson.updatedAt = new Date().toISOString();
+  if (status === 'published') {
+    lesson.publishedAt = new Date().toISOString();
+  }
+
+  return res.json({ lesson });
+});
+
 router.get('/public-lessons', (_req, res) => {
-  return res.json({ lessons });
+  const publishedLessons = lessons.filter((lesson) => lesson.status === 'published');
+  return res.json({ lessons: publishedLessons });
 });
 
 export default router;

@@ -6,6 +6,8 @@ import multer from 'multer';
 
 import authRouter from './routes/auth';
 import adminRouter from './routes/admin';
+import progressRouter from './routes/progress';
+import quizRouter from './routes/quiz';
 
 dotenv.config();
 
@@ -17,6 +19,8 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 // mount authentication routes under /api
 app.use('/api', authRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api', progressRouter);
+app.use('/api', quizRouter);
 
 app.get('/', (req, res) => {
   res.send('E-learning backend running');
