@@ -4,11 +4,11 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 
-import { users } from './auth';
+import { isStaffRole, saveUsersToDisk, UserRole, users } from './auth';
 
 interface AdminTokenPayload {
   username: string;
-  role: 'admin' | 'member';
+  role: UserRole;
 }
 
 interface Lesson {
@@ -74,7 +74,7 @@ const verifyAdmin = (req: Request, res: Response): AdminTokenPayload | null => {
     const secret = process.env.JWT_SECRET || 'change_me';
     const payload = jwt.verify(token, secret) as AdminTokenPayload;
 
-    if (payload.role !== 'admin') {
+    if (!isStaffRole(payload.role)) {
       res.status(403).json({ message: 'Admin privileges are required' });
       return null;
     }
@@ -107,20 +107,40 @@ router.post('/login', (req, res) => {
     users.set(adminUsername, {
       username: adminUsername,
       passwordHash: '',
-      role: 'admin',
+      role: 'super_admin',
       status: 'active',
       joinedAt: new Date().toISOString(),
     });
+    saveUsersToDisk();
   }
 
   const secret = process.env.JWT_SECRET || 'change_me';
-  const token = jwt.sign({ username: adminUsername, role: 'admin' }, secret, { expiresIn: '4h' });
+  const token = jwt.sign({ username: adminUsername, role: 'super_admin' }, secret, { expiresIn: '4h' });
 
   return res.json({
     token,
     admin: {
       username: adminUsername,
       displayName: 'System Admin',
+    },
+  });
+});
+
+router.post('/refresh-token', (req, res) => {
+  const admin = verifyAdmin(req, res);
+  if (!admin) {
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET || 'change_me';
+  const token = jwt.sign({ username: admin.username, role: admin.role }, secret, { expiresIn: '4h' });
+
+  return res.json({
+    token,
+    admin: {
+      username: admin.username,
+      displayName: admin.username,
+      role: admin.role,
     },
   });
 });
@@ -163,8 +183,68 @@ router.patch('/members/:username/status', (req, res) => {
 
   member.status = status;
   users.set(username, member);
+  saveUsersToDisk();
 
   return res.json({ message: 'Member status updated successfully' });
+});
+
+router.get('/users', (req, res) => {
+  const admin = verifyAdmin(req, res);
+  if (!admin) {
+    return;
+  }
+
+  const allUsers = Array.from(users.values()).map((user) => ({
+    username: user.username,
+    role: user.role,
+    status: user.status,
+    joinedAt: user.joinedAt,
+  }));
+
+  return res.json({ users: allUsers });
+});
+
+router.patch('/users/:username/role', (req, res) => {
+  const admin = verifyAdmin(req, res);
+  if (!admin) {
+    return;
+  }
+
+  if (admin.role !== 'super_admin') {
+    return res.status(403).json({ message: 'Only super admin can change roles' });
+  }
+
+  const { username } = req.params;
+  const { role } = req.body as { role?: UserRole };
+
+  const allowedRoles: UserRole[] = ['super_admin', 'instructor', 'teaching_assistant', 'member'];
+  if (!role || !allowedRoles.includes(role)) {
+    return res.status(400).json({ message: 'Invalid role' });
+  }
+
+  const targetKey = (username || '').trim().toLowerCase();
+  const targetUser = users.get(targetKey) || users.get(username);
+  if (!targetUser) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  if (targetUser.username.toLowerCase() === admin.username.toLowerCase() && role === 'member') {
+    return res.status(400).json({ message: 'Super admin cannot downgrade own account to member' });
+  }
+
+  targetUser.role = role;
+  users.set(targetKey, targetUser);
+  saveUsersToDisk();
+
+  return res.json({
+    message: 'User role updated successfully',
+    user: {
+      username: targetUser.username,
+      role: targetUser.role,
+      status: targetUser.status,
+      joinedAt: targetUser.joinedAt,
+    },
+  });
 });
 
 router.get('/lessons', (req, res) => {

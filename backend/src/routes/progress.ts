@@ -1,17 +1,17 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 
-import { users } from './auth';
+import { UserRole, users } from './auth';
 import { lessons } from './admin';
 
 interface AccessTokenPayload {
   username: string;
-  role: 'admin' | 'member';
+  role: UserRole;
 }
 
 const router = Router();
 
-const completedLessonsByUser: Map<string, Set<string>> = new Map();
+export const completedLessonsByUser: Map<string, Set<string>> = new Map();
 
 const getBearerToken = (authHeader?: string): string | null => {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -41,7 +41,7 @@ const verifyMember = (authHeader?: string): AccessTokenPayload | null => {
   }
 };
 
-const buildProgressPayload = (username: string) => {
+export const buildProgressPayload = (username: string) => {
   const publishedLessons = lessons.filter((lesson) => lesson.status === 'published');
   const completedSet = completedLessonsByUser.get(username) || new Set<string>();
   const completedLessonIds = publishedLessons

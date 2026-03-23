@@ -2,11 +2,12 @@ import { Request, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
 
 import { lessons } from './admin';
-import { users } from './auth';
+import { isStaffRole, UserRole, users } from './auth';
+import { completedLessonsByUser } from './progress';
 
 interface AccessTokenPayload {
   username: string;
-  role: 'admin' | 'member';
+  role: UserRole;
 }
 
 interface QuizQuestion {
@@ -40,8 +41,15 @@ interface QuizAttempt {
 }
 
 const router = Router();
-const quizzes: Quiz[] = [];
-const attempts: QuizAttempt[] = [];
+export const quizzes: Quiz[] = [];
+export const attempts: QuizAttempt[] = [];
+
+export const getBestQuizScoreForMember = (username: string): number => {
+  const memberAttempts = attempts.filter((attempt) => attempt.username === username);
+  return memberAttempts.length === 0 ? 0 : Math.max(...memberAttempts.map((attempt) => attempt.scorePercent));
+};
+
+export const getPublishedQuizCount = (): number => quizzes.filter((quiz) => quiz.status === 'published').length;
 
 const getBearerToken = (authHeader?: string): string | null => {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -72,7 +80,7 @@ const verifyAdmin = (req: Request, res: Response): AccessTokenPayload | null => 
     return null;
   }
 
-  if (payload.role !== 'admin') {
+  if (!isStaffRole(payload.role)) {
     res.status(403).json({ message: 'Admin privileges are required' });
     return null;
   }
@@ -228,6 +236,7 @@ router.get('/quizzes', (req, res) => {
         text: question.text,
         options: question.options,
       })),
+      lessonCompleted: (completedLessonsByUser.get(member.username) || new Set<string>()).has(quiz.lessonId),
     }))
     .map((quiz) => ({
       id: quiz.id,
@@ -238,6 +247,8 @@ router.get('/quizzes', (req, res) => {
       attemptsUsed: quiz.attemptsUsed,
       attemptsRemaining: Math.max(quiz.attemptLimit - quiz.attemptsUsed, 0),
       bestScorePercent: quiz.bestScorePercent,
+      lessonCompleted: quiz.lessonCompleted,
+      lockedReason: quiz.lessonCompleted ? null : 'Bạn cần hoàn thành bài học tương ứng trước khi làm quiz này',
       questions: quiz.questions.map((question) => ({
         id: question.id,
         text: question.text,
@@ -264,6 +275,11 @@ router.post('/quizzes/:quizId/submit', (req, res) => {
   const quiz = quizzes.find((item) => item.id === quizId && item.status === 'published');
   if (!quiz) {
     return res.status(404).json({ message: 'Quiz not found' });
+  }
+
+  const completedSet = completedLessonsByUser.get(member.username) || new Set<string>();
+  if (!completedSet.has(quiz.lessonId)) {
+    return res.status(403).json({ message: 'You must complete the linked lesson before taking this quiz' });
   }
 
   const attemptsUsed = attempts.filter(

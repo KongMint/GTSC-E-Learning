@@ -1,0 +1,32 @@
+[
+  {
+    "key": "forgot_flow_test@gtsc.local",
+    "user": {
+      "username": "forgot_flow_test@gtsc.local",
+      "passwordHash": "$2b$10$GKAFbYPY715FIsuLTrYbFusCo2Um/pRpqYQV8Xu69/2WguO/BeRf6",
+      "role": "member",
+      "status": "active",
+      "joinedAt": "2026-03-12T10:49:04.766Z"
+    }
+  },
+  {
+    "key": "congngo318@gmail.com",
+    "user": {
+      "username": "congngo318@gmail.com",
+      "passwordHash": "$2b$10$/y9ejJeTWLVU1F.C31XZPumLFq1FRwjMIPVizZ4u7gIQePj3CIU7.",
+      "role": "member",
+      "status": "active",
+      "joinedAt": "2026-03-12T10:52:01.346Z"
+    }
+  },
+  {
+    "key": "admin@gtsc.local",
+    "user": {
+      "username": "admin@gtsc.local",
+      "passwordHash": "",
+      "role": "super_admin",
+      "status": "active",
+      "joinedAt": "2026-03-13T06:37:36.392Z"
+    }
+  }
+]
